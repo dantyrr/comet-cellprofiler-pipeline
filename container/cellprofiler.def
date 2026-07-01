@@ -1,0 +1,19 @@
+Bootstrap: docker
+From: cellprofiler/cellprofiler:4.2.8
+
+%help
+    CellProfiler 4.2.8 container for the COMET multiplex IF pipeline.
+    Build with: singularity build cellprofiler.sif cellprofiler.def
+    Or pull directly instead of building:
+    singularity pull cellprofiler.sif docker://cellprofiler/cellprofiler:4.2.8
+
+%labels
+    Author dtyrrell
+    CellProfilerVersion 4.2.8
+    Purpose COMET-28ch-multiplex-IF-pipeline
+
+%post
+    # Nothing extra needed on top of the base CellProfiler image for this
+    # pipeline. Add apt/pip packages here if you extend the .cppipe with
+    # modules that need them.
+    echo "CellProfiler 4.2.8 container ready."
