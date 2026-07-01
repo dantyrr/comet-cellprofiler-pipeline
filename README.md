@@ -35,14 +35,10 @@ changes later.
    bash tiling/tile.sh SAMPLE_ID
    ```
 
-   `tiling/tile.sh` is real and working — it finds the source whole-slide
-   OME-TIFF for a sample ID under Box and calls `tiling/make_tiles.py`.
-   **`make_tiles.py` itself is still a stub** (see `tiling/README.md`) —
-   paste the real implementation in from `~/Downloads/make_tiles.py`
-   before this step will actually run. Whatever implementation you use,
-   it must produce output matching the contract documented in
-   `tiling/README.md` (tile naming, 100px overlap, `tile_manifest.json`
-   schema).
+   Finds the source whole-slide OME-TIFF for a sample ID under Box and
+   calls `tiling/make_tiles.py`, which cuts it into 4000px tiles (100px
+   overlap) + `tile_manifest.json`. Both scripts are real/working — see
+   `tiling/README.md` for env var overrides and the output contract.
 
 3. **Set up your environment:**
 
@@ -100,19 +96,19 @@ positive/negative controls.
   guaranteed to reproduce identical segmentation results (adaptive
   thresholding behavior has changed across CP versions historically).
 
-- **`tiling/make_tiles.py` not included** — only a stub, plus the
-  documented output contract (`tiling/README.md`). `tiling/tile.sh` (the
-  wrapper that finds source images and calls it) is real and included.
-  Any tiling implementation you use must preserve the manifest schema and
-  the fixed-pixel tile overlap, or `analysis/merge_brain.py`'s dedup step
-  won't work correctly.
+- **Tiling (`tiling/tile.sh` + `tiling/make_tiles.py`) is included and
+  working**, tuned to dtyrrell's Mac/Box setup by default. If you ever
+  swap in a different tiling implementation, it must preserve the
+  manifest schema and the fixed-pixel tile overlap (see
+  `tiling/README.md`), or `analysis/merge_brain.py`'s dedup step won't
+  work correctly.
 
 ## Repo layout
 
 ```
 pipeline/   the CellProfiler .cppipe pipeline (do not edit thresholds without re-validating)
 container/  Singularity build recipe for CellProfiler 4.2.8
-tiling/     tile.sh (real) + make_tiles.py (stub) + the output contract
+tiling/     tile.sh + make_tiles.py (both real) + the output contract
 hpc/        Slurm array + multi-brain submission scripts
 analysis/   merge_brain.py — per-brain CSV merge with overlap dedup
 docs/       full scientific rationale (channel map, thresholds, validation)

@@ -1,19 +1,25 @@
 # Tiling
 
-`tile.sh` is the real, working wrapper script — it runs locally (on
-dtyrrell's Mac), finds the source OME-TIFF for a given sample ID under the
-lab's Box folder, and calls `make_tiles.py` to produce tiles + manifest.
+Both scripts here are real and working:
 
-`make_tiles.py` itself is still a **stub**. The actual tiling
-implementation lives at `~/Downloads/make_tiles.py` on the researcher's
-local machine and wasn't included when this repo was packaged — paste it
-into `tiling/make_tiles.py` next time you're back in this repo. Until
-then, `tile.sh` will fail with a clear error pointing here.
+- `tile.sh` — runs locally (on dtyrrell's Mac), finds the source OME-TIFF
+  for a given sample ID under the lab's Box folder, and calls
+  `make_tiles.py` to produce tiles + manifest.
+- `make_tiles.py` — cuts the whole-slide OME-TIFF into a grid of tiles
+  (via `tifffile`/`numpy`), skipping tiny edge slivers and near-empty
+  (no-tissue) tiles, and writes `tile_manifest.json`.
 
-Whatever `make_tiles.py` implementation you use, it **must** satisfy the
-output contract below (call signature: `make_tiles.py <input.ome.tiff>
-<output_dir> --tile <size> --overlap <overlap>`), since `hpc/run_array.sh`
-and `analysis/merge_brain.py` depend on it exactly.
+`make_tiles.py`'s own argparse defaults are `--tile 6000 --overlap 200`
+(a safe size for machines with less RAM), but **production runs use
+`--tile 4000 --overlap 100`**, passed explicitly by `tile.sh` — that's the
+combination the rest of the pipeline (`hpc/`, `analysis/merge_brain.py`)
+was validated against. Don't rely on calling `make_tiles.py` directly
+without those flags for anything meant to feed the validated pipeline.
+
+The output already matches the contract below (call signature:
+`make_tiles.py <input.ome.tiff> <output_dir> --tile <size> --overlap
+<overlap>`), which `hpc/run_array.sh` and `analysis/merge_brain.py`
+depend on exactly — keep that in mind if you ever modify either script.
 
 ## Running tile.sh
 
