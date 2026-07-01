@@ -1,12 +1,40 @@
-# Tiling — TODO, not included in this handoff
+# Tiling
 
-`make_tiles.py` and `tile.sh` in this directory are **stubs**. The real
-tiling script that produced the validated production tiles lives on the
-researcher's local machine and wasn't available when this repo was
-packaged. Ask the repo owner (dtyrrell) for it, or write your own — but
-if you write your own, it **must** satisfy the output contract below,
-since `hpc/run_array.sh` and `analysis/merge_brain.py` depend on it
-exactly.
+`tile.sh` is the real, working wrapper script — it runs locally (on
+dtyrrell's Mac), finds the source OME-TIFF for a given sample ID under the
+lab's Box folder, and calls `make_tiles.py` to produce tiles + manifest.
+
+`make_tiles.py` itself is still a **stub**. The actual tiling
+implementation lives at `~/Downloads/make_tiles.py` on the researcher's
+local machine and wasn't included when this repo was packaged — paste it
+into `tiling/make_tiles.py` next time you're back in this repo. Until
+then, `tile.sh` will fail with a clear error pointing here.
+
+Whatever `make_tiles.py` implementation you use, it **must** satisfy the
+output contract below (call signature: `make_tiles.py <input.ome.tiff>
+<output_dir> --tile <size> --overlap <overlap>`), since `hpc/run_array.sh`
+and `analysis/merge_brain.py` depend on it exactly.
+
+## Running tile.sh
+
+```bash
+bash tiling/tile.sh SAMPLE_ID [tile_size] [overlap]
+# e.g.
+bash tiling/tile.sh ICV-T2_3
+bash tiling/tile.sh IP-C1_3 4000 100
+```
+
+Defaults (all overridable via env var, see `.env.example`):
+
+| Var | Default | Purpose |
+|---|---|---|
+| `COMET_BOX_DATA_ROOT` | dtyrrell's Box "Nick's Comet data" folder | where source whole-slide OME-TIFFs live |
+| `MAKE_TILES_SCRIPT` | `tiling/make_tiles.py` (next to `tile.sh`) | tiling implementation to call |
+| `COMET_TILES_OUTPUT_ROOT` | `$HOME/Desktop` | where `<SAMPLE_ID>_tiles_4k/` gets written |
+
+After tiling, the output folder needs to be uploaded to the HPC cluster
+(Cheaha, via the OnDemand Files app) into `$COMET_PROJECT_ROOT` before
+running `hpc/run_array.sh`.
 
 ## Output contract
 

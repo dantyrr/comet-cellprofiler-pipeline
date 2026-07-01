@@ -29,11 +29,20 @@ changes later.
    # or: singularity pull cellprofiler.sif docker://cellprofiler/cellprofiler:4.2.8
    ```
 
-2. **Tile your images.** Tiling is not included in this repo (see
-   `tiling/README.md` — it's a stub, you'll need to supply or rewrite the
-   tiling script yourself). Whatever you use, it must produce output
-   matching the contract documented there (tile naming, 100px overlap,
-   `tile_manifest.json` schema).
+2. **Tile your images:**
+
+   ```bash
+   bash tiling/tile.sh SAMPLE_ID
+   ```
+
+   `tiling/tile.sh` is real and working — it finds the source whole-slide
+   OME-TIFF for a sample ID under Box and calls `tiling/make_tiles.py`.
+   **`make_tiles.py` itself is still a stub** (see `tiling/README.md`) —
+   paste the real implementation in from `~/Downloads/make_tiles.py`
+   before this step will actually run. Whatever implementation you use,
+   it must produce output matching the contract documented in
+   `tiling/README.md` (tile naming, 100px overlap, `tile_manifest.json`
+   schema).
 
 3. **Set up your environment:**
 
@@ -91,18 +100,19 @@ positive/negative controls.
   guaranteed to reproduce identical segmentation results (adaptive
   thresholding behavior has changed across CP versions historically).
 
-- **Tiling script not included** — only a stub (`tiling/make_tiles.py`,
-  `tiling/tile.sh`) plus the documented output contract
-  (`tiling/README.md`). Any tiling approach you use must preserve that
-  manifest schema and the fixed-pixel tile overlap, or `analysis/merge_brain.py`'s
-  dedup step won't work correctly.
+- **`tiling/make_tiles.py` not included** — only a stub, plus the
+  documented output contract (`tiling/README.md`). `tiling/tile.sh` (the
+  wrapper that finds source images and calls it) is real and included.
+  Any tiling implementation you use must preserve the manifest schema and
+  the fixed-pixel tile overlap, or `analysis/merge_brain.py`'s dedup step
+  won't work correctly.
 
 ## Repo layout
 
 ```
 pipeline/   the CellProfiler .cppipe pipeline (do not edit thresholds without re-validating)
 container/  Singularity build recipe for CellProfiler 4.2.8
-tiling/     stub tiling scripts + the output contract they must satisfy
+tiling/     tile.sh (real) + make_tiles.py (stub) + the output contract
 hpc/        Slurm array + multi-brain submission scripts
 analysis/   merge_brain.py — per-brain CSV merge with overlap dedup
 docs/       full scientific rationale (channel map, thresholds, validation)
