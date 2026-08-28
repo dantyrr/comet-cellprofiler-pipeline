@@ -70,6 +70,14 @@ changes later.
    This chains each brain's segmentation array → merge job → next brain's
    array, capping cluster concurrency and isolating per-brain failures.
 
+## Documentation
+
+| Doc | What it covers |
+|---|---|
+| [`docs/RUNBOOK.md`](docs/RUNBOOK.md) | **End-to-end operational guide** — every command from raw OME-TIFF to clustered output: environments, channel-map verification, tiling, upload, SSH, Slurm submission, a full troubleshooting playbook (held jobs, `DependencyNeverSatisfied`, hung nodes, timeouts), download, and local analysis. Includes an incident log from the 8-brain run. |
+| [`docs/results_8-26-26.md`](docs/results_8-26-26.md) | Results of the 8-brain ICV + IP analysis, and the T-cell gating changes with their evidence and validation. |
+| [`docs/channel_map_and_thresholds.md`](docs/channel_map_and_thresholds.md) | Channel map and per-object threshold rationale. |
+
 ## Scientific rationale
 
 See [`docs/channel_map_and_thresholds.md`](docs/channel_map_and_thresholds.md)
@@ -111,7 +119,9 @@ container/  Singularity build recipe for CellProfiler 4.2.8
 tiling/     tile.sh + make_tiles.py (both real) + the output contract
 hpc/        Slurm array + multi-brain submission scripts
 analysis/   merge_brain.py — per-brain CSV merge with overlap dedup
-docs/       full scientific rationale (channel map, thresholds, validation)
+docs/       runbook, results writeup, channel map + threshold rationale
+tools/      verify_channel_map.py -- check OME channel names vs pipeline plane indices
+analysis/   merge_brain.py, make_cafe_csvs.py (reduced-set export), cluster_cells.py
 ```
 
 ## Citation / acknowledgment

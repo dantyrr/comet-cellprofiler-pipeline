@@ -28,7 +28,13 @@ for IMAGE in "$@"; do
     fi
     mkdir -p results/${IMAGE}
 
-    # Dependency: each brain's array waits for previous brain's MERGE to finish
+    # Dependency: each brain's array waits for the previous brain's ARRAY, not
+    # its merge. Chaining on the merge deadlocks: the merge uses afterok, so a
+    # single failed/requeued tile leaves it permanently PENDING with
+    # DependencyNeverSatisfied -- and since it never terminates, the afterany
+    # that the next brain waits on never fires either, stalling every remaining
+    # brain. Hanging the chain off the array (afterany, fires on any outcome)
+    # means one bad tile costs that brain its automatic merge and nothing more.
     DEP_FLAG=""
     [[ -n "$PREV_JOB" ]] && DEP_FLAG="--dependency=afterany:$PREV_JOB"
 
@@ -46,7 +52,7 @@ for IMAGE in "$@"; do
                        --dependency=afterok:$SEG_JOB \
                        --job-name=merge_${IMAGE} \
                        --partition=$PARTITION \
-                       --time=00:10:00 \
+                       --time=00:30:00 \
                        --mem=8G \
                        --cpus-per-task=1 \
                        --output=logs/merge_%j.out \
@@ -54,7 +60,11 @@ for IMAGE in "$@"; do
                        --wrap="python3 analysis/merge_brain.py ${IMAGE}")
     echo "  -> merge as job $MERGE_JOB (runs after $SEG_JOB succeeds)"
 
-    PREV_JOB=$MERGE_JOB
+    PREV_JOB=$SEG_JOB
 done
 echo ""
 echo "All submitted. Watch with: squeue -u \$USER"
+echo ""
+echo "If a brain's merge shows DependencyNeverSatisfied, its array had a failed"
+echo "or requeued tile. Recover with (see docs/RUNBOOK.md):"
+echo "  scancel <MERGE_JOBID> && python3 analysis/merge_brain.py <BRAIN>"

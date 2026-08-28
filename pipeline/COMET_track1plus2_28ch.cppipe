@@ -34,7 +34,7 @@ NamesAndTypes:[module_num:3|svn_version:'Unknown'|variable_revision_number:8|sho
     Match metadata:[]
     Image set matching method:Order
     Set intensity range from:Image metadata
-    Assignments count:13
+    Assignments count:16
     Single images count:0
     Maximum intensity:255.0
     Process as 3D?:No
@@ -115,6 +115,24 @@ NamesAndTypes:[module_num:3|svn_version:'Unknown'|variable_revision_number:8|sho
     Maximum intensity:255.0
     Select the rule criteria:or (metadata does T "7")
     Name to assign these images:NeuN
+    Name to assign these objects:Cell
+    Select the image type:Grayscale image
+    Set intensity range from:Image metadata
+    Maximum intensity:255.0
+    Select the rule criteria:or (metadata does T "20")
+    Name to assign these images:CD44
+    Name to assign these objects:Cell
+    Select the image type:Grayscale image
+    Set intensity range from:Image metadata
+    Maximum intensity:255.0
+    Select the rule criteria:or (metadata does T "26")
+    Name to assign these images:MAA
+    Name to assign these objects:Cell
+    Select the image type:Grayscale image
+    Set intensity range from:Image metadata
+    Maximum intensity:255.0
+    Select the rule criteria:or (metadata does T "27")
+    Name to assign these images:SNA
     Name to assign these objects:Cell
     Select the image type:Grayscale image
     Set intensity range from:Image metadata
@@ -203,7 +221,7 @@ MeasureObjectSizeShape:[module_num:7|svn_version:'Unknown'|variable_revision_num
     Calculate the advanced features?:Yes
 
 MeasureObjectIntensity:[module_num:8|svn_version:'Unknown'|variable_revision_number:4|show_window:True|notes:['Per-cell MFI of each phenotypic marker within the Microglia and Astrocyte masks. This is your single-cell expression matrix.']|batch_state:array([], dtype=uint8)|enabled:True|wants_pause:False]
-    Select images to measure:Iba1, GFAP, CD68, APOE, CD74, CD11b, Arg1, CD206
+    Select images to measure:APOE, Arg1, CD11b, CD206, CD44, CD68, CD74, GFAP, Iba1, MAA, SNA
     Select objects to measure:Microglia, Astrocytes
 
 ConvertObjectsToImage:[module_num:9|svn_version:'Unknown'|variable_revision_number:1|show_window:True|notes:[]|batch_state:array([], dtype=uint8)|enabled:True|wants_pause:False]
@@ -340,7 +358,7 @@ MeasureObjectSizeShape:[module_num:19|svn_version:'Unknown'|variable_revision_nu
     Calculate the advanced features?:No
 
 MeasureObjectIntensity:[module_num:20|svn_version:'Unknown'|variable_revision_number:4|show_window:True|notes:[]|batch_state:array([], dtype=uint8)|enabled:True|wants_pause:False]
-    Select images to measure:CD3, CD4, CD8, NeuN
+    Select images to measure:APOE, Arg1, CD11b, CD206, CD3, CD4, CD44, CD68, CD74, CD8, GFAP, Iba1, MAA, NeuN, SNA
     Select objects to measure:Cells, Nuclei
 
 FilterObjects:[module_num:21|svn_version:'Unknown'|variable_revision_number:10|show_window:True|notes:[]|batch_state:array([], dtype=uint8)|enabled:True|wants_pause:False]
