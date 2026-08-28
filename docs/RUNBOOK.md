@@ -568,10 +568,13 @@ for f in results/$B/tile_r*_c*/MyExpt_Cells.csv; do [ -f "$f" ] || continue; tot
 | | pipeline | used here | why |
 |---|---|---|---|
 | T cell | `CD3 >= 0.022` absolute | `CD3 >= 2.0 x brain median` | absolute gate swung counts **78x** across brains; a control outranked every treated brain |
-| CD8 call | `CD8_CD4_ratio >= 1.0` | `>= 2.0` | 1.0 separates cleanly in ICV but not IP, where the ratio distribution is compressed |
+| CD8 call | `CD8_CD4_ratio >= 1.0` | **ICV `>= 1.0`, IP `>= 1.5`** | 1.0 is validated and clean in ICV (zero control false positives); only IP needs correction, so only IP gets it |
 | NeuN / Area / FormFactor | `<=0.050` / `100–950` / `>=0.70` | **unchanged** | validated, not batch-sensitive |
 
 Validation against the CD8-knockout design: 3 of 4 control brains call **exactly
-zero** CD8; treated brains call 4–9; 652 T cells total (625 CD4 / 27 CD8).
+zero** CD8; treated brains call 7–11; 652 T cells total (616 CD4 / 36 CD8).
+
+Gate overrides: `--cd8-ratio X` forces one cutoff on all cohorts; omitting it
+uses the per-cohort map in `analysis/make_cafe_csvs.py`.
 
 Full evidence in [`results_8-26-26.md`](results_8-26-26.md).

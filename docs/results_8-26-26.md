@@ -74,7 +74,7 @@ cluster tracks treatment:
 |---|---|---|---|---|
 | cells | 5 | **16** | 4 | **26** |
 
-Cluster 8 contains 16 of the 27 CD8 cells in the dataset (31% CD8 vs 4% overall).
+Cluster 8 contains 17 of the 36 CD8 cells in the dataset (33% CD8 vs 6% overall).
 Its profile is CD8 2.6×, GFAP 2.7×, NeuN 0.6×. Clustering had no access to
 subtype labels, so this is an independent recovery of the treatment effect.
 
@@ -131,10 +131,34 @@ per-brain normalisation the pipeline already applies to CD8/CD4 subtyping, for
 the same reason. Between-brain range drops 78× → 5.6×, giving **44–197 T cells
 per brain, 652 total**.
 
-**CD8 ratio raised 1.0 → 2.0.** In ICV the 1.0 cutoff separates cleanly (controls
-contain no cell above 0.86; treated CD8 cells start at 1.48). In IP the ratio
-distribution is compressed, with controls reaching 1.52 and treated cells piling
-up just above 1.0.
+**CD8 ratio set per cohort: ICV 1.0, IP 1.5.** The pipeline's single cutoff of
+1.0 was validated on ICV, and that validation holds — across both ICV control
+brains *no cell exceeds ratio 1.0 at all*, while ICV treated brains carry cells
+up to 4.70. ICV needs no correction.
+
+IP is different: its ratio distribution is compressed, IP control brains carry
+cells up to 2.67, and treated cells pile up just above 1.0. Every CD8 false
+positive in the dataset is in the IP cohort, almost all in IP_C2_3.
+
+Applying IP's stricter cutoff to ICV would discard real CD8 cells for no
+specificity gain, so the cutoff is per cohort. Sensitivity/specificity across
+the options (CD3 gate fixed at 2.0×):
+
+| CD8 rule | control false positives | treated CD8 |
+|---|---|---|
+| global 1.0 | 7 | 45 |
+| global 1.25 | 4 | 38 |
+| global 1.5 | 2 | 33 |
+| global 2.0 | 1 | 26 |
+| **ICV 1.0 / IP 1.5 (used)** | **2** | **34** |
+
+Two alternatives were tested and rejected. Gating on **CD8 brightness relative to
+each brain's own CD8 median** performs far worse — at 2× it yields 443 control
+false positives against 356 in treated, and even at 5× its specificity is below
+the ratio's. Requiring **both** a high ratio and CD8 brightness is redundant,
+changing treated counts by one cell at equal specificity. CD4 and CD8 share
+bleedthrough characteristics, so the ratio cancels what absolute intensity
+cannot — which is why the pipeline used a ratio to begin with.
 
 ### Validation against the CD8-knockout design
 
@@ -143,13 +167,22 @@ transfer took, while CD4 T cells (CD3+) persist.
 
 | | control brains | treated brains |
 |---|---|---|
-| CD8 counts | 0, 0, 0, **1** | 6, 9, 4, 7 |
+| CD8 counts | 0, 0, 0, **2** | 7, 11, 8, 8 |
 
-Three of four controls at exactly zero. **652 T cells total: 625 CD4, 27 CD8** —
-the CD4-dominant profile the genotype predicts, at the expected order of magnitude.
+Three of four controls at exactly zero; the fourth (IP_C2_3) carries 2.
+**652 T cells total: 616 CD4, 36 CD8** — the CD4-dominant profile the genotype
+predicts, at the expected order of magnitude.
 
-> **Open item:** the single CD8 call in control IP_C2_3 (ratio 2.67) survives the
-> cutoff and warrants a look in the image before control CD8 is reported as zero.
+**Ceiling on CD8 counts.** CD8 cells are a subset of the T-cell pool (44–197 per
+brain), so realistic numbers here are single digits to mid-teens per brain.
+Loosening the CD3 gate to enlarge that pool does not help — it moves treated CD8
+from 26 to only 30 while returning T-cell counts to implausible values (at 1.6×,
+ICV_C1_3 balloons to 1,562 T cells). The constraint is signal in the images, not
+the threshold.
+
+> **Open item:** the 2 CD8 calls in control IP_C2_3 survive the cutoff and warrant
+> a look in the image before control CD8 is reported as zero. IP_C2_3 has been the
+> one persistently noisy control at every threshold tested.
 
 ## 5. Limitations
 
