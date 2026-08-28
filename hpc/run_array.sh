@@ -1,19 +1,24 @@
 #!/bin/bash
 #SBATCH --job-name=cp_array
-#SBATCH --partition=express
-#SBATCH --time=02:00:00
+#SBATCH --partition=short
+#SBATCH --time=12:00:00
 #SBATCH --mem=32G
 #SBATCH --cpus-per-task=2
 #SBATCH --output=logs/cp_%A_%a.out
 #SBATCH --error=logs/cp_%A_%a.err
 
+# Tile runtime is unpredictable: it tracks object density, NOT file size or
+# tile position. In the 8-brain run most tiles finished in 2-20 min but one
+# needed >2h, so a 2h partition (Cheaha 'express') is too tight. 'short'
+# gives 12h. Jobs only consume what they use, so the ceiling is free.
+#
 # NOTE: this module name/version is specific to UAB Cheaha. Adjust or
 # remove for other clusters (e.g. `module load apptainer` elsewhere).
 module load Singularity/3.5.2-GCC-5.4.0-2.26
 
 # --- config (see .env.example / README for details) ---
 PROJECT="${COMET_PROJECT_ROOT:?Set COMET_PROJECT_ROOT env var to your project directory}"
-PARTITION="${SLURM_PARTITION:-express}"
+PARTITION="${SLURM_PARTITION:-short}"
 # --------------------------------------------------------
 
 PIPELINE=$PROJECT/pipeline/COMET_track1plus2_28ch.cppipe
