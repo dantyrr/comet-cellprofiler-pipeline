@@ -93,15 +93,25 @@ def trunks_column(seeds):
 # Default multiplier for the per-brain CD3 threshold (see derive_tcells).
 TCELL_CD3_K = 2.0
 
-# CD8/CD4 ratio above which a T cell is called CD8.
+# CD8/CD4 ratio above which a T cell is called CD8 -- PER COHORT.
 #
-# The pipeline uses 1.0, validated on ICV data where the separation is clean:
-# ICV control brains contain no cell above 0.86, and ICV treated CD8 cells start
-# at 1.48. In the IP batch the ratio distribution is compressed -- IP control
-# brains reach 1.00-1.52 and treated cells pile up just above 1.0 -- so 1.0 no
-# longer separates signal from noise there. 2.0 sits above the IP noise band and
-# well below the treated signal, and takes control CD8 counts to 0,0,0,1.
-TCELL_CD8_RATIO = 2.0
+# The pipeline uses a single cutoff of 1.0, validated on ICV. That validation
+# holds: across both ICV control brains, no cell exceeds ratio 1.0 at all, even
+# though ICV treated brains carry cells up to 4.70. ICV needs no correction.
+#
+# The IP batch is different. Its ratio distribution is compressed, and IP control
+# brains carry cells up to 2.67, so 1.0 admits false positives there. Every CD8
+# false positive in the dataset is in the IP cohort (almost all in IP_C2_3).
+#
+# Applying the strict IP cutoff to ICV would discard real CD8 cells for no
+# specificity gain, so the cutoff is set per cohort:
+#     ICV -> 1.0 (the pipeline's validated value; 0 control false positives)
+#     IP  -> 1.5 (0 false positives in IP_C1_3, 2 in IP_C2_3)
+#
+# Yield: 7, 11, 8, 8 CD8 across the four treated brains (34 total) against 2
+# control false positives. A single global 2.0 gives 26 with 1 false positive.
+TCELL_CD8_RATIO = {"ICV": 1.0, "IP": 1.5}
+TCELL_CD8_RATIO_DEFAULT = 1.5
 
 
 def derive_tcells(parent, k):
@@ -131,7 +141,7 @@ def derive_tcells(parent, k):
     return parent[keep].copy(), med
 
 
-def build_tcells_derived(parent, k, cd8_ratio=TCELL_CD8_RATIO):
+def build_tcells_derived(parent, k, cd8_ratio=TCELL_CD8_RATIO_DEFAULT):
     """Reduced-set columns for T cells re-derived from Cells."""
     sub, med = derive_tcells(parent, k)
     markers = marker_columns(parent)
@@ -239,7 +249,7 @@ def main(argv):
     if "--tcell-abs" in argv:                 # use the pipeline's absolute CD3 gate
         argv.remove("--tcell-abs")
         tcell_k = None
-    cd8_ratio = TCELL_CD8_RATIO
+    cd8_ratio = None   # None => per-cohort map
     if "--cd8-ratio" in argv:
         i = argv.index("--cd8-ratio")
         cd8_ratio = float(argv[i + 1])
@@ -258,7 +268,9 @@ def main(argv):
     print("T cell gate: " + ("pipeline absolute CD3 >= 0.022"
                              if not tcell_k else
                              f"per-brain CD3 >= {tcell_k} x brain median"))
-    print(f"CD8 call: CD8_CD4_ratio >= {cd8_ratio}")
+    print("CD8 call: CD8_CD4_ratio >= " + (str(cd8_ratio) + " (all cohorts)"
+                                          if cd8_ratio is not None else
+                                          ", ".join(f"{k}:{v}" for k, v in TCELL_CD8_RATIO.items())))
     outroot.mkdir(parents=True, exist_ok=True)
 
     manifest = []
@@ -279,9 +291,11 @@ def main(argv):
                 if parent is None:
                     print(f"  {cname:11s} Cells missing -- skipped")
                     continue
-                out, missing, med = build_tcells_derived(parent, tcell_k, cd8_ratio)
+                ratio = cd8_ratio if cd8_ratio is not None else \
+                        TCELL_CD8_RATIO.get(route, TCELL_CD8_RATIO_DEFAULT)
+                out, missing, med = build_tcells_derived(parent, tcell_k, ratio)
                 dropped = 0
-                gate_note = f"  [CD3 >= {tcell_k}x{med:.4f} = {tcell_k*med:.4f}]"
+                gate_note = f"  [CD3 >= {tcell_k}x{med:.4f} = {tcell_k*med:.4f}; CD8 ratio >= {ratio}]"
             else:
                 obj = read(md, brain, suffix)
                 if obj is None:
