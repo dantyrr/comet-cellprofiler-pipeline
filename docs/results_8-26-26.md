@@ -1,3 +1,14 @@
+> ## ⚠️ SUPERSEDED — do not use these results
+>
+> This analysis used an astrocyte segmentation that was later shown to select
+> **neuropil rather than cells**: the objects it produced were GFAP-*depleted*
+> relative to surrounding tissue (0.81× the tissue mean). Section 3.1 below —
+> "Astrocytes — reactive shift, reproducible across both routes" — does **not**
+> survive correction.
+>
+> Use [`results_8-28-26.md`](results_8-28-26.md) instead. This file is kept only
+> to document what was originally reported and why it changed.
+
 # COMET ICV + IP analysis — 8 brains, 4 cell types
 
 **Run date:** 2026-08-27 · **Panel:** 28-channel COMET · **Model:** CD8-knockout mouse

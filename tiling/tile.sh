@@ -28,7 +28,11 @@ fi
 # --- config ---
 # Defaults below are dtyrrell's local Mac setup. Override via env vars if
 # the data location, script location, or output location ever change.
-BASE="${COMET_BOX_DATA_ROOT:-/Users/dtyrrell/Library/CloudStorage/Box-Box/00_Tyrrell Lab/04_DATA/01_OUR_DATA/04_Comet/Nick's Comet data}"
+# NOTE: the default is assigned separately rather than inline as
+# "${VAR:-...Nick's...}" -- an apostrophe inside ${VAR:-default} opens a
+# single-quote context even within double quotes, which breaks parsing.
+DEFAULT_BASE="/Users/dtyrrell/Library/CloudStorage/Box-Box/00_Tyrrell Lab/04_DATA/01_OUR_DATA/04_Comet/Nick's Comet data"
+BASE="${COMET_BOX_DATA_ROOT:-$DEFAULT_BASE}"
 SCRIPT="${MAKE_TILES_SCRIPT:-$(dirname "$0")/make_tiles.py}"
 OUT_ROOT="${COMET_TILES_OUTPUT_ROOT:-$HOME/Desktop}"
 # --------------
