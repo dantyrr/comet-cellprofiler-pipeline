@@ -7,7 +7,6 @@ image, processing tiles as a job array, and merging per brain with overlap-zone
 deduplication. Downstream: single-cell clustering and spatial neighbourhood
 analysis.
 
-Private repo, set up for reproducibility rather than distribution.
 
 ---
 
@@ -187,7 +186,3 @@ analysis/   merge_brain.py                  per-brain merge + overlap dedup
             spatial_neighborhood.py         neighbourhood composition
 docs/       results, runbook, spatial method, channel map
 ```
-
-## Citation / acknowledgment
-
-TODO — add lab name and grant number before this repo is ever made public.
