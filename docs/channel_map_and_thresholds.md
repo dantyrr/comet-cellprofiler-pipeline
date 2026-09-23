@@ -78,7 +78,9 @@ tissue.
 - Threshold correction factor: **1.0**
 - Lower/upper bounds: **0.02 / 1.0**
 - Adaptive window size: **50**
-- Typical object diameter: 30–150 px, discard outside range
+- Typical object diameter: **30–200 px**, discard outside range
+  (NOTE: microglia use 30–150; the astrocyte range is wider. Earlier versions
+  of this document stated 30–150 for both, which was wrong.)
 
 Same rationale as microglia. The floor value (0.02) is roughly double the
 Iba1 floor, calibrated from tissue-masked whole-slide intensity
@@ -103,8 +105,10 @@ intensity drift — **not** biological CD4 co-expression.
 **Solution — ratio-based subtyping instead of absolute dual gating:**
 
 1. `Tcells` = objects passing: `CD3 MeanIntensity >= 0.022`, `NeuN
-   MeanIntensity <= 0.050`, `Area` in `[100, 950]` px, `FormFactor >=
-   0.70`. This identifies T-cell-like objects independent of CD4/CD8
+   MeanIntensity <= 0.050`, `Area >= 90` and `<= 950` px, `FormFactor >=
+   0.65`. (Earlier versions of this document said 100 and 0.70; the pipeline's
+   actual values are 90 and 0.65.) This identifies T-cell-like objects
+   independent of CD4/CD8
    subtype.
 2. `CalculateMath` computes `CD8_CD4_ratio = MeanIntensity_CD8 /
    MeanIntensity_CD4` on the `Cells` object set (must run **before** the

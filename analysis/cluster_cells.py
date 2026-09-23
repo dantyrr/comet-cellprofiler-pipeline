@@ -24,8 +24,8 @@ Options
     --groups A,B         restrict to these groups (e.g. ICV-C,ICV-T)
     --outdir PATH        output directory (default DATA_DIR/CELLTYPE/output)
 
-Run inside an environment with scanpy, anndata, harmonypy, igraph, seaborn:
-    python cluster_cells.py ...
+Run this inside the scanpy environment:
+    /Users/dtyrrell/miniconda3/envs/scanpy/bin/python cluster_cells.py ...
 """
 import argparse
 import sys
@@ -50,7 +50,11 @@ sc.settings.verbosity = 0
 sc.settings.set_figure_params(dpi=100, facecolor="white")
 
 # Columns that are metadata / annotation, never clustering features.
-NON_FEATURE = {"cell_id", "global_x", "global_y", "Subtype", "CD8_CD4_ratio"}
+NON_FEATURE = {"cell_id", "global_x", "global_y", "Subtype", "CD8_CD4_ratio",
+                "CellType"}
+
+# Columns treated as morphology (everything else is taken to be a marker).
+MORPHOLOGY_PREFIXES = ("AreaShape_", "ObjectSkeleton_")
 
 # Stable colors so every cell type's plots read the same way.
 GROUP_COLORS = {
@@ -65,7 +69,9 @@ def parse_args(argv):
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("data_dir")
-    p.add_argument("celltype")
+    p.add_argument("celltype",
+                   help="cell type, or several comma-separated to cluster jointly "
+                        "(e.g. Microglia,Astrocytes)")
     p.add_argument("--resolution", type=float, default=0.4)
     p.add_argument("--neighbors", type=int, default=30)
     p.add_argument("--min-dist", type=float, default=0.5)
@@ -74,54 +80,81 @@ def parse_args(argv):
     p.add_argument("--no-harmony", action="store_true")
     p.add_argument("--groups", default=None)
     p.add_argument("--outdir", default=None)
+    p.add_argument("--cluster-features", default=None,
+                   help="comma-separated columns to CLUSTER on. The keyword "
+                        "'expression' expands to every non-morphology feature, and "
+                        "can be mixed with explicit names, e.g. "
+                        "'expression,AreaShape_MeanRadius'. All other features are "
+                        "still carried and still appear in dotplots and tables -- "
+                        "they simply do not drive the embedding. "
+                        "Default: cluster on everything.")
     return p.parse_args(argv)
 
 
-def load(data_dir, celltype, groups_filter):
+def load(data_dir, celltypes, groups_filter):
+    """Load one or more cell types. Several are concatenated into one matrix so
+    they share a single scaling/PCA/Harmony/UMAP space; a CellType column records
+    which population each cell came from."""
     data_dir = Path(data_dir)
-    cdir = data_dir / celltype
-    if not cdir.is_dir():
-        sys.exit(f"ERROR: {cdir} does not exist. Run make_cafe_csvs.py first.")
 
     manifest_fp = data_dir / "samples.csv"
     if not manifest_fp.exists():
         sys.exit(f"ERROR: manifest not found at {manifest_fp}")
     manifest = pd.read_csv(manifest_fp)
-    manifest = manifest[manifest["CellType"] == celltype]
+
+    missing = [c for c in celltypes if c not in set(manifest["CellType"])]
+    if missing:
+        sys.exit(f"ERROR: cell type(s) not in manifest: {missing}")
+
+    manifest = manifest[manifest["CellType"].isin(celltypes)]
     if groups_filter:
         manifest = manifest[manifest["Group"].isin(groups_filter)]
     if manifest.empty:
-        sys.exit(f"ERROR: no samples for CellType={celltype} in {manifest_fp}")
+        sys.exit(f"ERROR: no samples for {celltypes} in {manifest_fp}")
 
     print("=" * 60)
-    print(f"LOADING {celltype}")
+    print("LOADING " + " + ".join(celltypes))
     print("=" * 60)
 
     dfs = []
     for row in manifest.itertuples():
-        fp = cdir / row.File
+        fp = data_dir / row.CellType / row.File
         if not fp.exists():
-            print(f"  WARNING: {fp.name} listed in manifest but missing -- skipped")
+            print(f"  WARNING: {fp} listed in manifest but missing -- skipped")
             continue
         df = pd.read_csv(fp)
         df["SampleID"] = row.BrainID
         df["Group"] = row.Group
         df["Route"] = row.Route
         df["Condition"] = row.Condition
+        df["CellType"] = row.CellType
         dfs.append(df)
-        print(f"  {row.BrainID:12s} {len(df):7,d} cells   Group={row.Group}")
+        print(f"  {row.CellType:11s} {row.BrainID:12s} {len(df):7,d} cells   Group={row.Group}")
 
     if not dfs:
         sys.exit("ERROR: no CSVs could be loaded.")
 
+    # keep only columns common to every cell type, so a joint run never
+    # silently drops cells to NaN on a feature one population lacks
+    common = set(dfs[0].columns)
+    for d in dfs[1:]:
+        common &= set(d.columns)
+    dropped = sorted((set().union(*(set(d.columns) for d in dfs))) - common)
+    if dropped:
+        print(f"  NOTE: dropping columns not shared by all cell types: {dropped}")
+    dfs = [d[[c for c in dfs[0].columns if c in common]] for d in dfs]
+
     all_df = pd.concat(dfs, ignore_index=True)
     print(f"\nTotal cells: {len(all_df):,} across {all_df['SampleID'].nunique()} brains")
     print(f"Groups: {all_df['Group'].value_counts().sort_index().to_dict()}")
+    if len(celltypes) > 1:
+        print(f"Cell types: {all_df['CellType'].value_counts().to_dict()}")
     return all_df
 
 
 def build_adata(all_df):
-    meta_cols = ["SampleID", "Group", "Route", "Condition"]
+    meta_cols = ["SampleID", "Group", "Route", "Condition", "CellType"]
+    meta_cols = [c for c in meta_cols if c in all_df.columns]
     passthrough = [c for c in ("Subtype", "CD8_CD4_ratio", "global_x", "global_y")
                    if c in all_df.columns]
     marker_cols = [c for c in all_df.columns
@@ -154,16 +187,56 @@ def build_adata(all_df):
     return adata
 
 
+def resolve_cluster_features(adata, spec):
+    """Expand --cluster-features into a concrete column list."""
+    allf = list(adata.var.index)
+    if not spec:
+        return allf
+    want = []
+    for tok in [s.strip() for s in spec.split(",") if s.strip()]:
+        if tok.lower() == "expression":
+            want += [f for f in allf
+                     if not f.startswith(MORPHOLOGY_PREFIXES)]
+        elif tok.lower() == "morphology":
+            want += [f for f in allf if f.startswith(MORPHOLOGY_PREFIXES)]
+        elif tok in allf:
+            want.append(tok)
+        else:
+            sys.exit(f"ERROR: --cluster-features: unknown feature {tok!r}.\n"
+                     f"Available: {allf}")
+    seen, out = set(), []
+    for f in want:
+        if f not in seen:
+            seen.add(f); out.append(f)
+    if not out:
+        sys.exit("ERROR: --cluster-features resolved to an empty list")
+    return out
+
+
 def embed(adata, args, outdir):
     adata.write_h5ad(outdir / "adata_raw.h5ad")
 
     print("\nSCALING AND PCA")
     adata.obs["batch"] = adata.obs["SampleID"].values
-    adata.raw = adata.copy()                     # unscaled values for dotplots
-    sc.pp.scale(adata, max_value=10)
+    adata.raw = adata.copy()                     # unscaled, ALL features, for plots
 
-    n_pcs = min(args.n_pcs, adata.n_vars - 1, adata.n_obs - 1)
-    sc.pp.pca(adata, n_comps=n_pcs, svd_solver="auto")
+    feats = resolve_cluster_features(adata, args.cluster_features)
+    if len(feats) < adata.n_vars:
+        held = [f for f in adata.var.index if f not in feats]
+        print(f"  Clustering on {len(feats)} of {adata.n_vars} features: {feats}")
+        print(f"  Carried for plotting only ({len(held)}): {held}")
+    else:
+        print(f"  Clustering on all {len(feats)} features")
+
+    # Scale + PCA on the chosen subset only; the embedding is then attached back
+    # to the full object so every feature stays available downstream.
+    sub = adata[:, feats].copy()
+    sc.pp.scale(sub, max_value=10)
+
+    n_pcs = min(args.n_pcs, sub.n_vars - 1, sub.n_obs - 1)
+    sc.pp.pca(sub, n_comps=n_pcs, svd_solver="auto")
+    adata.obsm["X_pca"] = sub.obsm["X_pca"]
+    adata.uns["cluster_features"] = feats
     print(f"  PCA -> {adata.obsm['X_pca'].shape}")
 
     n_batches = adata.obs["batch"].nunique()
@@ -246,6 +319,29 @@ def plots(adata, celltype, outdir):
     fig.savefig(outdir / "umap_clusters_by_group.pdf", dpi=150, bbox_inches="tight")
     plt.close(fig)
 
+    if "CellType" in adata.obs.columns and adata.obs["CellType"].nunique() > 1:
+        fig, ax = plt.subplots(figsize=(12, 10))
+        sc.pl.umap(adata, color="CellType", ax=ax, show=False, title="",
+                   size=size, alpha=0.7)
+        _clean(ax); plt.tight_layout()
+        fig.savefig(outdir / "umap_celltype.pdf", dpi=150, bbox_inches="tight")
+        plt.close(fig)
+
+        # clusters split by cell type, to see which clusters are shared
+        cts = list(adata.obs["CellType"].cat.categories) \
+            if hasattr(adata.obs["CellType"], "cat") \
+            else sorted(adata.obs["CellType"].unique())
+        fig, axes = plt.subplots(1, len(cts), figsize=(7 * len(cts), 7), squeeze=False)
+        for ax, c in zip(axes[0], cts):
+            sub = adata[adata.obs["CellType"] == c]
+            sc.pl.umap(sub, color="leiden", ax=ax, show=False,
+                       title=f"{c}  (n={sub.n_obs:,})", legend_loc="on data",
+                       legend_fontsize=8, size=size, alpha=0.7)
+            _clean(ax)
+        plt.tight_layout()
+        fig.savefig(outdir / "umap_clusters_by_celltype.pdf", dpi=150, bbox_inches="tight")
+        plt.close(fig)
+
     if "Subtype" in adata.obs.columns:
         fig, ax = plt.subplots(figsize=(12, 10))
         sc.pl.umap(adata, color="Subtype", ax=ax, show=False, title="",
@@ -323,6 +419,18 @@ def tables(adata, outdir):
     expr.groupby(["leiden", "SampleID"], observed=True)[markers].median()\
         .to_csv(outdir / "median_expr_by_cluster_sample.csv")
 
+    if "CellType" in obs.columns and obs["CellType"].nunique() > 1:
+        comp = pd.crosstab(obs["leiden"], obs["CellType"])
+        comp["total"] = comp.sum(axis=1)
+        for c in [c for c in comp.columns if c != "total"]:
+            comp[f"pct_{c}"] = (100 * comp[c] / comp["total"]).round(1)
+        comp.to_csv(outdir / "cluster_composition_by_celltype.csv")
+        print("\n  cluster composition by cell type:")
+        print(comp.to_string())
+        obs.groupby(["CellType", "Group", "SampleID", "leiden"], observed=True)\
+           .size().reset_index(name="count")\
+           .to_csv(outdir / "cluster_counts_by_celltype.csv", index=False)
+
     if "Subtype" in obs.columns:
         obs.groupby(["Group", "SampleID", "Subtype"], observed=True)\
            .size().reset_index(name="count")\
@@ -335,14 +443,17 @@ def main(argv):
     args = parse_args(argv)
     groups_filter = args.groups.split(",") if args.groups else None
 
+    celltypes = [c.strip() for c in args.celltype.split(",") if c.strip()]
+    label = "+".join(celltypes)
+
     outdir = Path(args.outdir) if args.outdir \
-        else Path(args.data_dir) / args.celltype / "output"
+        else Path(args.data_dir) / label / "output"
     outdir.mkdir(parents=True, exist_ok=True)
 
-    all_df = load(args.data_dir, args.celltype, groups_filter)
+    all_df = load(args.data_dir, celltypes, groups_filter)
     adata = build_adata(all_df)
     adata = embed(adata, args, outdir)
-    plots(adata, args.celltype, outdir)
+    plots(adata, label, outdir)
     tables(adata, outdir)
 
     adata.write_h5ad(outdir / "adata_clustered.h5ad")

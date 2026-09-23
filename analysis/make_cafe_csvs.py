@@ -40,6 +40,21 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+# Additional morphology carried for PLOTTING/inspection only when
+# --extra-morphology is passed. These are deliberately not in the default set:
+# Area, Perimeter and MajorAxisLength inflate several-fold when adjacent glial
+# arborisations merge into one object, whereas MeanRadius/MedianRadius are far
+# more stable (1.4-1.6x across size deciles vs 6.7x for Area).
+EXTRA_SHAPE = [
+    "AreaShape_MaximumRadius",
+    "AreaShape_MedianRadius",
+    "AreaShape_Solidity",
+    "AreaShape_Perimeter",
+    "AreaShape_EquivalentDiameter",
+    "AreaShape_Compactness",
+    "AreaShape_Extent",
+]
+
 REDUCED_SHAPE = [
     "AreaShape_Area",
     "AreaShape_MeanRadius",
@@ -57,6 +72,11 @@ CELL_TYPES = {
 }
 
 JOIN_KEY = "tile_name"
+
+# Shape columns actually written; main() extends this with EXTRA_SHAPE on request.
+SHAPE_COLS = list(REDUCED_SHAPE)
+EXTRA_SKELETON = False
+USE_SEEDED_TCELLS = False
 
 
 def parse_brain(dirname):
@@ -91,7 +111,15 @@ def trunks_column(seeds):
 
 
 # Default multiplier for the per-brain CD3 threshold (see derive_tcells).
-TCELL_CD3_K = 2.0
+TCELL_CD3_K = 1.5
+
+# A T cell must also carry a coreceptor: CD4 or CD8 above this multiple of the
+# brain's median. Validated against 1.04M cells: among morphology-passing cells,
+# CD4/CD8 positivity is 0-1.2% below CD3 1.5x median and rises to 12-73% by 1.75x
+# and 38-91% above 2.0x. Requiring a coreceptor lets the CD3 cut drop to 1.5x
+# while INCREASING specificity -- 1,162 T cells and 44 CD8 in treated brains,
+# versus 678 and 35 under CD3>=2.0x alone, with control CD8 unchanged at 2-3.
+TCELL_CORECEPTOR_K = 2.0
 
 # CD8/CD4 ratio above which a T cell is called CD8 -- PER COHORT.
 #
@@ -131,12 +159,17 @@ def derive_tcells(parent, k):
     the validated pipeline values.
     """
     cd3 = parent["Intensity_MeanIntensity_CD3"]
+    cd4 = parent["Intensity_MeanIntensity_CD4"]
+    cd8 = parent["Intensity_MeanIntensity_CD8"]
     med = float(cd3.median())
+    coreceptor = ((cd4 > TCELL_CORECEPTOR_K * cd4.median())
+                  | (cd8 > TCELL_CORECEPTOR_K * cd8.median()))
     keep = (
         (cd3 >= k * med)
+        & coreceptor
         & (parent["Intensity_MeanIntensity_NeuN"] <= 0.050)
-        & parent["AreaShape_Area"].between(100, 950)
-        & (parent["AreaShape_FormFactor"] >= 0.70)
+        & parent["AreaShape_Area"].between(90, 950)
+        & (parent["AreaShape_FormFactor"] >= 0.65)
     )
     return parent[keep].copy(), med
 
@@ -145,7 +178,7 @@ def build_tcells_derived(parent, k, cd8_ratio=TCELL_CD8_RATIO_DEFAULT):
     """Reduced-set columns for T cells re-derived from Cells."""
     sub, med = derive_tcells(parent, k)
     markers = marker_columns(parent)
-    keep = [c for c in REDUCED_SHAPE if c in parent.columns]
+    keep = [c for c in SHAPE_COLS if c in parent.columns]
     missing = [c for c in REDUCED_SHAPE if c not in parent.columns]
 
     cols = [JOIN_KEY, "ObjectNumber"] + keep + list(markers)
@@ -178,7 +211,7 @@ def read(merged_dir, brain, suffix):
 def build_direct(obj, seeds):
     """Microglia / Astrocytes: measurements are already on the object."""
     markers = marker_columns(obj)
-    keep = [c for c in REDUCED_SHAPE if c in obj.columns]
+    keep = [c for c in SHAPE_COLS if c in obj.columns]
     missing = [c for c in REDUCED_SHAPE if c not in obj.columns]
 
     out = obj[[JOIN_KEY, "ObjectNumber"] + keep + list(markers)].copy()
@@ -192,9 +225,13 @@ def build_direct(obj, seeds):
     if seeds is not None:
         tcol = trunks_column(seeds)
         if tcol:
-            s = seeds[[JOIN_KEY, "ObjectNumber", tcol]].rename(
-                columns={tcol: "ObjectSkeleton_NumberTrunks"}
-            )
+            skel = {tcol: "ObjectSkeleton_NumberTrunks"}
+            if EXTRA_SKELETON:
+                for c in seeds.columns:
+                    if c.startswith("ObjectSkeleton_") and c != tcol:
+                        skel[c] = c.split("_MicrogliaSkeleton")[0] \
+                                   .split("_AstrocyteSkeleton")[0]
+            s = seeds[[JOIN_KEY, "ObjectNumber"] + list(skel)].rename(columns=skel)
             out = out.merge(s, on=[JOIN_KEY, "ObjectNumber"], how="inner")
         else:
             missing.append("ObjectSkeleton_NumberTrunks")
@@ -211,7 +248,7 @@ def build_child(child, parent):
         raise ValueError("child object has no Parent_Cells column")
 
     markers = marker_columns(parent)
-    keep = [c for c in REDUCED_SHAPE if c in parent.columns]
+    keep = [c for c in SHAPE_COLS if c in parent.columns]
     missing = [c for c in REDUCED_SHAPE if c not in parent.columns]
 
     pcols = [JOIN_KEY, "ObjectNumber"] + keep + list(markers)
@@ -246,6 +283,13 @@ def tcell_subtype(out, merged_dir, brain):
 def main(argv):
     argv = list(argv)
     tcell_k = TCELL_CD3_K
+    global SHAPE_COLS, EXTRA_SKELETON, USE_SEEDED_TCELLS
+    if "--tcells-from-seeded" in argv:
+        argv.remove("--tcells-from-seeded"); USE_SEEDED_TCELLS = True
+    if "--extra-morphology" in argv:
+        argv.remove("--extra-morphology")
+        SHAPE_COLS = list(REDUCED_SHAPE) + list(EXTRA_SHAPE)
+        EXTRA_SKELETON = True
     if "--tcell-abs" in argv:                 # use the pipeline's absolute CD3 gate
         argv.remove("--tcell-abs")
         tcell_k = None
@@ -265,6 +309,8 @@ def main(argv):
 
     outroot = Path(argv[1])
     merged_dirs = argv[2:]
+    print(f"Shape columns written: {len(SHAPE_COLS)}"
+          + ("  (+ extra morphology, plot-only)" if EXTRA_SKELETON else ""))
     print("T cell gate: " + ("pipeline absolute CD3 >= 0.022"
                              if not tcell_k else
                              f"per-brain CD3 >= {tcell_k} x brain median"))
@@ -287,7 +333,26 @@ def main(argv):
 
             if cname == "Tcells" and tcell_k:
                 # re-derive from Cells with a per-brain CD3 threshold
-                parent = read(md, brain, "Cells")
+                # T cells are derived from Cells (nucleus+3px), NOT from the
+                # seeded TcellCandidates, even when the latter exists.
+                #
+                # Seeding is right for glia -- large ramified cells where marker
+                # territory defines the object. It is wrong for T cells: the
+                # CD8/CD4 RATIO decides subtype, and a ratio is only comparable
+                # across objects measured in a consistent window. Seeded objects
+                # have variable geometry and can grow into a neighbour's signal,
+                # which makes the ratio noisy. Measured against the CD8-knockout
+                # controls (which should call ~0 CD8), Cells gives 3 false CD8
+                # against 9-19 for every seeded variant tested, at equal yield.
+                #
+                # Pass --tcells-from-seeded to override.
+                if USE_SEEDED_TCELLS:
+                    parent = read(md, brain, "TcellCandidates")
+                    src = "TcellCandidates"
+                    if parent is None:
+                        parent = read(md, brain, "Cells"); src = "Cells"
+                else:
+                    parent = read(md, brain, "Cells"); src = "Cells"
                 if parent is None:
                     print(f"  {cname:11s} Cells missing -- skipped")
                     continue
@@ -295,7 +360,8 @@ def main(argv):
                         TCELL_CD8_RATIO.get(route, TCELL_CD8_RATIO_DEFAULT)
                 out, missing, med = build_tcells_derived(parent, tcell_k, ratio)
                 dropped = 0
-                gate_note = f"  [CD3 >= {tcell_k}x{med:.4f} = {tcell_k*med:.4f}; CD8 ratio >= {ratio}]"
+                gate_note = (f"  [from {src}; CD3 >= {tcell_k}x{med:.4f} = {tcell_k*med:.4f}"
+                             f" AND CD4/CD8 > {TCELL_CORECEPTOR_K}x median; CD8 ratio >= {ratio}]")
             else:
                 obj = read(md, brain, suffix)
                 if obj is None:
