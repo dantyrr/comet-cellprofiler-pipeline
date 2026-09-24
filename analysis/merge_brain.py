@@ -3,10 +3,14 @@
 Merge per-tile CellProfiler outputs into per-brain CSVs with overlap-zone dedup.
 
 Usage:
-    python3 merge_brain.py <BRAIN_NAME>
+    python3 merge_brain.py <BRAIN_NAME> [--allow-incomplete]
 
 Example:
     python3 merge_brain.py ICV_C1_3
+
+Refuses to merge (exit 2) if any tile in the manifest produced no output, since
+merging then yields a brain that looks complete but is short. --allow-incomplete
+overrides. Writes <BRAIN>_tile_coverage.csv recording which tiles contributed.
 
 Project root is read from the COMET_PROJECT_ROOT environment variable
 (see .env.example / README). You can also override it by passing it as
@@ -47,6 +51,10 @@ if len(sys.argv) not in (2, 3):
     print(f"Usage: {sys.argv[0]} <BRAIN_NAME> [PROJECT_ROOT]", file=sys.stderr)
     print(f"Example: {sys.argv[0]} ICV_C1_3", file=sys.stderr)
     sys.exit(1)
+
+ALLOW_INCOMPLETE = "--allow-incomplete" in sys.argv
+if ALLOW_INCOMPLETE:
+    sys.argv.remove("--allow-incomplete")
 
 brain = sys.argv[1]
 
@@ -111,8 +119,41 @@ print(f"  Full image: {full_W} x {full_H} px")
 print(f"  Tile overlap: {overlap} px ({half_overlap} on each side of midline)")
 print(f"  Output: {merged_dir}")
 
+# ----- completeness check: every manifest tile must have produced output -----
+#
+# CellProfiler writes MyExpt_Image.csv on every successful run regardless of how
+# many objects were found, so its absence means that tile did not complete --
+# as opposed to a per-class CSV being absent, which legitimately happens when a
+# tile contains none of that object (e.g. no CD8 T cells).
+#
+# Without this gate the merge silently skips failed tiles and produces a
+# brain that looks normal but is short. That happened in the 8-28-26 run:
+# one tile was killed after a node hung, and the merged brain was ~2.3% short
+# with nothing in the output to indicate it.
+missing = [n for n in tile_meta if not (results_dir / n / "MyExpt_Image.csv").exists()]
+if missing:
+    print(f"\n*** INCOMPLETE: {len(missing)} of {len(tile_meta)} tiles produced no output ***",
+          file=sys.stderr)
+    for n in sorted(missing):
+        print(f"      {n}", file=sys.stderr)
+    print("\n  These tiles failed or were never run. Merging now would produce a",
+          file=sys.stderr)
+    print("  brain that looks complete but is short by those tiles' cells.",
+          file=sys.stderr)
+    print("  Re-run them, then merge again. Array indices are the tiles' position",
+          file=sys.stderr)
+    print("  in `ls <BRAIN>_tiles_4k/tile_r*_c*.ome.tiff | sort`.", file=sys.stderr)
+    if not ALLOW_INCOMPLETE:
+        print("\n  Refusing to merge. Pass --allow-incomplete to override.\n",
+              file=sys.stderr)
+        sys.exit(2)
+    print("\n  --allow-incomplete given; merging anyway.\n", file=sys.stderr)
+else:
+    print(f"  Completeness: all {len(tile_meta)} tiles produced output")
+
 # ----- discover which object classes exist -----
-sample_tile = next(iter(tile_meta))
+sample_tile = next(n for n in tile_meta
+                   if (results_dir / n / "MyExpt_Image.csv").exists())
 sample_csvs = sorted(glob.glob(str(results_dir / sample_tile / "MyExpt_*.csv")))
 if not sample_csvs:
     print(f"ERROR: no MyExpt_*.csv in {results_dir / sample_tile}", file=sys.stderr)
@@ -195,6 +236,13 @@ for cls in classes:
     summary_rows.append({"class": cls, "n_raw": n_raw, "n_dedup": n_dedup, "n_dropped": n_dropped})
 
 # ----- summary -----
+# record which tiles contributed to each class, so a short brain is traceable
+coverage = pd.DataFrame(
+    [{"tile": n,
+      "has_output": (results_dir / n / "MyExpt_Image.csv").exists()}
+     for n in sorted(tile_meta)])
+coverage.to_csv(merged_dir / f"{brain}_tile_coverage.csv", index=False)
+
 summary_df = pd.DataFrame(summary_rows)
 summary_fp = merged_dir / f"{brain}_summary.csv"
 summary_df.to_csv(summary_fp, index=False)
